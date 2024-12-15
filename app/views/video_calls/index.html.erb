@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Twilio Video Call</title>
+  <style>
+    #local-video, #remote-video {
+      width: 100%;
+      height: auto;
+    }
+    #remote-video {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-evenly;
+    }
+    video {
+      width: 300px;
+      margin: 10px;
+    }
+    .controls {
+      text-align: center;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Twilio Video Call</h1>
+
+  <div>
+    <label for="room">Room Name:</label>
+    <input type="text" id="room" placeholder="Enter room name">
+  </div>
+
+  <div>
+    <label for="identity">Your Name:</label>
+    <input type="text" id="identity" placeholder="Enter your name">
+  </div>
+
+  <div class="controls">
+    <button id="get-token">Get Token</button>
+  </div>
+
+  <button id="joinButton" style="display: none;">Join Room</button>
+
+  <div>
+    <h2>Your Video</h2>
+    <video id="local-video" autoplay muted></video>
+  </div>
+
+  <div id="remote-video">
+    <h2>Remote Participants</h2>
+  </div>
+
+  <script src="https://media.twiliocdn.com/sdk/js/video/releases/2.20.0/twilio-video.min.js"></script>
+  <script>
+    document.getElementById('get-token').onclick = async function() {
+      const room = document.getElementById('room').value || 'default-room';
+      const identity = document.getElementById('identity').value || `user_${Math.random().toString(36).substring(7)}`;
+
+      const response = await fetch(`/video_calls?room=${room}&identity=${identity}`, {
+        method: 'POST'
+      });
+      const data = await response.json();
+      if (data.token) {
+        document.getElementById('joinButton').style.display = 'inline-block';
+
+        window.token = data.token;
+        window.identity = data.identity;
+
+      } else {
+        alert('Failed to get token. Please try again.');
+      }
+    };
+
+    document.getElementById('joinButton').onclick = function() {
+      const token = window.token;
+      const room = document.getElementById('room').value || 'default-room';
+    
+      Twilio.Video.connect(token, { name: room }).then(room => {
+        console.log(`Successfully connected to room: ${room}`);
+    
+        let localVideoTrack = room.localParticipant.videoTracks[0]?.track;
+    
+        if (!localVideoTrack) {
+          console.log('No local video track available, attempting to create one...');
+          
+          const constraints = {
+            video: true
+          };
+
+          Twilio.Video.createLocalVideoTrack(constraints).then(track => {
+            console.log('Local video track created successfully');
+
+            if (track.mediaStream) {
+              console.log('Media Stream:', track.mediaStream);
+
+              room.localParticipant.publishTrack(track);
+              document.getElementById('local-video').srcObject = track.mediaStream;
+            } else {
+              console.error('Local video track does not have a media stream.');
+              alert('Failed to retrieve the media stream for the local video track.');
+            }
+          }).catch(error => {
+            console.error('Error creating local video track:', error);
+            alert('Failed to create local video track. Please ensure your camera is working.');
+          });
+        } else {
+          console.log('Using existing local video track');
+          document.getElementById('local-video').srcObject = localVideoTrack.mediaStream;
+        }
+    
+        room.on('participantConnected', participant => {
+          console.log(`Participant connected: ${participant.identity}`);
+    
+          participant.on('trackSubscribed', track => {
+            if (track.kind === 'video') {
+              const remoteVideoElement = document.createElement('video');
+              remoteVideoElement.srcObject = track.mediaStream;
+              document.getElementById('remote-video').appendChild(remoteVideoElement);
+              remoteVideoElement.play();
+            }
+          });
+        });
+    
+      }).catch(error => {
+        console.error('Error connecting to room:', error);
+        alert('Failed to connect to the room.');
+      });
+    };
+  </script>
+</body>
+</html>
