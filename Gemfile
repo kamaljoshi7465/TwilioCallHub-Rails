@@ -65,3 +65,5 @@ group :test do
 end
 
 gem 'twilio-ruby'
+gem 'jwt'
+gem 'rack-cors' 
